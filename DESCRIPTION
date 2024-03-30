@@ -2,11 +2,14 @@ Package: causalCP
 Title: Causal Change Point Detection and Localization
 Version: 0.0.0.9000
 Authors@R: 
-    person("Shimeng", "Huang", , "shimeng@math.ku.dk", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    c(person("Shimeng", "Huang", , "shimeng@math.ku.dk", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0001-6919-821X")),
+      person("Jonas", "Peters", role = "ctb"),
+      person("Niklas", "Pfister", role = "ctb"))
+Description: Detection and localization of changes of the causal mechanism
+    between a response and set of covariates. Methodological details are
+    described in Huang et al. (2024, <doi:10.48550/arXiv.2403.12677>).
+License: GPL-3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.1
