@@ -1,0 +1,7 @@
+causalCP.Rproj
+.Rbuildignore
+.Rprofile
+.Rproj.user
+.DS_Store
+inst/output/*.rds
+inst/output/plots/*.pdf

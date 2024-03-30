@@ -1,0 +1,36 @@
+Copyright (c) 2017
+All rights reserved.
+
+README
+
+This folder contains the following data:
+
+1. GDPch_quarterly.csv
+	GDP data for Switzerland from the federal reserve St. Louis (link: https://fred.stlouisfed.org/series/CPMNACSAB1GQCH)
+2. GDPeu_quarterly.csv
+	GDP data for the Euro states from the federal reserve St. Louis (link: https://fred.stlouisfed.org/series/EUNNGDP)
+3. business_confidence_index.csv
+	business confidence index (BCI) for Switzerland from OECD (link: https://data.oecd.org/leadind/business-confidence-index-bci.htm)
+4. consumer_price_index.csv
+	consumer price index (CPI) for Switzerland from OECD (link: https://data.oecd.org/price/inflation-cpi.htm)
+5. snb_balancesheet.csv
+	monthly balance sheet data SNB (link: https://data.snb.ch/en/topics/snb#!/cube/snbbipo)
+6. snb-callmoneyrate.csv
+	call money rate (link: https://data.snb.ch/en/topics/ziredev#!/cube/zimoma)
+7. snb-monthlyexchangerates.csv
+	monthly average exchange rates CHF (link: https://data.snb.ch/en/topics/ziredev#!/cube/devkum)
+
+The data is unified in the file "monetarypolicy.csv", where GDP was interpolated to get monthly data.
+
+
+Citations:
+- for 1:
+  Eurostat, Gross Domestic Product for Switzerland© [CPMNACSAB1GQCH], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/CPMNACSAB1GQCH, March 16, 2017.
+- for 2:
+  Eurostat, Gross Domestic Product (Euro/ECU series) for Euro Area (19 Countries)© [EUNNGDP], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/EUNNGDP, March 15, 2017.
+- for 3:
+  OECD (2017), Business confidence index (BCI) (indicator). doi: 10.1787/3092dc4f-en (Accessed on 29 March 2017)
+- for 4:
+  OECD (2017), Inflation (CPI) (indicator). doi: 10.1787/eee82e6e-en (Accessed on 29 March 2017)
+- for 5, 6 and 7:
+  Swiss National Bank (SNB), SNB data portal, https://data.snb.ch/ (Accessed on 29 March 2017)
