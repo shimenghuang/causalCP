@@ -1,70 +1,6 @@
 library(ggplot2)
 
-pkg_dir <- "/Users/hrt620/Documents/ku_projects/causalCPD_proj/causalCPD"
-
-lag_vars <- function(X, Y, shifts = c(0L, 1L)) {
-  X_new <- lapply(shifts, \(shift) {
-    Xk <- dplyr::lag(X, n = shift)
-    if (shift > 0) {
-      Yk <- dplyr::lag(Y, n = shift)
-      Xk <- cbind(Xk, Yk)
-      colnames(Xk) <- c(paste0(colnames(X), "_lag", shift), paste0("Y_lag", shift))
-    } else {
-      colnames(Xk) <- paste0(colnames(X), "_lag", shift)
-    }
-    Xk
-  }) %>%
-    dplyr::bind_cols()
-  X_new <- X_new[(max(shifts) + 1):nrow(X),]
-  col_names <- colnames(X_new)
-  X_new <- as.matrix(X_new)
-  colnames(X_new) <- col_names
-  Y_new <- Y[(max(shifts) + 1):length(Y)]
-  return(list(X = X_new, Y = Y_new))
-}
-
-drop_vars <- function(X, names) {
-  keep_names <- setdiff(colnames(X), names)
-  return(X[,keep_names])
-}
-
-esti_fun <- function(X, Y, I,
-                     eval_gap = 1,
-                     end_buff = max(ceiling(length(I) * 0.1), 10),
-                     cond_sets = get_powerset(colnames(X)),
-                     min_seg = 30) {
-  # Note: for cc_loss t is relative to the interval
-  eval_grid <- seq(end_buff, length(I)-end_buff, by = eval_gap)
-  vals <- sapply(eval_grid, \(t) cc_loss_niklas1(X, Y, t, min(I), max(I),
-                                                 min_seg = min_seg,
-                                                 cond_sets = cond_sets))
-  return(min(I) + eval_grid[which.min(vals)])
-}
-
-test_wrap <- function(X, Y, I, PS = get_powerset(colnames(X)),
-                      rel_grid = c(1/2), test_name = "chow1",
-                      intercept = TRUE, rev_one_rest = FALSE, two_dir = FALSE,
-                      save_resids = FALSE, alpha = 0.05) {
-  res <- one_vs_rest_test(X[I,,drop=FALSE], Y[I], PS, rel_grid, test_name,
-                          intercept, rev_one_rest, two_dir, save_resids)
-  min(sapply(res$pvals_all, max)) # * length(rel_grid)
-}
-
-test_wrap <- function(X, Y, I, min_seg = 30) {
-  length_out <- max(length(I)/min_seg, 3)
-  grid_pts <- seq(from = 0, to = length(I), length.out = length_out)
-  res <- seqICP(as.matrix(X[I,,drop = FALSE]), Y[I], test = "variance",
-                par.test = list(grid = grid_pts,
-                                complements = TRUE,
-                                link = sum,
-                                alpha = 0.05,
-                                B = 100,
-                                permutation = FALSE),
-                par.model = list(pknown = TRUE, p = 3),
-                stopIfEmpty = FALSE, silent = TRUE,
-                model = "ar")
-  return(min(res$test.results$p.value))
-}
+pkg_dir <- "."
 
 # ---- load data ----
 
@@ -148,6 +84,7 @@ for (ii in seq_along(ps)) {
                  stopIfEmpty = FALSE, silent = TRUE,
                  model = "ar")
   pvals1[ii] <- max(res1$test.results$p.value)
+  message("p-value: ", pvals1[ii])
 }
 
 # without X2, X7, or X2 and X7 (test for CCP)
@@ -168,6 +105,7 @@ for (ii in seq_along(ps)) {
                  stopIfEmpty = FALSE, silent = TRUE,
                  model = "ar")
   pvals2[ii] <- max(res2$test.results$p.value)
+  message("p-value: ", pvals1[ii])
 }
 
 # original set of covariates (test for RCP)

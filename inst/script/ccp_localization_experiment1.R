@@ -58,127 +58,128 @@ future_lapply(reps, \(kk) {
   candi2_time <- vector("numeric", length(ccp_scales))
   ccloss_time <- vector("numeric", length(ccp_scales))
   bp_time <- vector("numeric", length(ccp_scales))
-  
+
   for (ll in seq_along(ccp_scales)) {
-    
     params_lst <- rand_mb_params_step(n, true_ccp, true_nccp, seed_num,
-                                      nccp_mean_nc = 4, nccp_mean_sc = nccp_scale,
-                                      nccp_sig_nc = 4, nccp_sig_sc = nccp_scale,
-                                      nccp_coef_nc = 3, nccp_coef_sc = nccp_scale,
-                                      ccp_mean_nc = 1, ccp_mean_sc = ccp_scales[ll],
-                                      ccp_sig_nc = 1, ccp_sig_sc = ccp_scales[ll],
-                                      ccp_coef_nc = 2, ccp_coef_sc = ccp_scales[ll],
-                                      fixed_sign = fixed_sign)
-    
-    # # verify that the CCP are indeed CCPs (calculate the population OLS coef for all S in PS)
-    # ps_tmp <- lapply(PS, \(S) {
-    #   if (length(S) != 0) {
-    #     paste0("X", S)
-    #   }
-    #   else {
-    #     S
-    #   }
-    # })
-    # beta_diff <- rep(NA, length(ps_tmp))
-    # for (ss in seq_along(ps_tmp)) {
-    #   S <- ps_tmp[[ss]]
-    #   message("**", S, "**")
-    #   beta1 <- with(params_lst$params_all['1',], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                           s1, s2, s3, s4, s5, S))
-    #   message(beta1)
-    #   beta2 <- with(params_lst$params_all[as.character(true_ccp),], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                                              s1, s2, s3, s4, s5, S))
-    #   message(beta2)
-    #   beta_diff[ss] <- any(beta1 != beta2)
-    # }
-    
-    dat <- with(params_lst$params_df,
-                sim_data_mix(m1_all = m1, m2_all = m2, m3_all = m3, m4_all = m4, m5_all = m5,
-                             s1_all = s1, s2_all = s2, s3_all = s3, s4_all = s4, s5_all = s5,
-                             a12_all = a12, a53_all = a53, a43_all = a43,
-                             b15_all = b15, b25_all = b25,
-                             seed_num = kk))
+      nccp_mean_nc = 4, nccp_mean_sc = nccp_scale,
+      nccp_sig_nc = 4, nccp_sig_sc = nccp_scale,
+      nccp_coef_nc = 3, nccp_coef_sc = nccp_scale,
+      ccp_mean_nc = 1, ccp_mean_sc = ccp_scales[ll],
+      ccp_sig_nc = 1, ccp_sig_sc = ccp_scales[ll],
+      ccp_coef_nc = 2, ccp_coef_sc = ccp_scales[ll],
+      fixed_sign = fixed_sign
+    )
+
+    dat <- with(
+      params_lst$params_df,
+      sim_data_mix(
+        m1_all = m1, m2_all = m2, m3_all = m3, m4_all = m4, m5_all = m5,
+        s1_all = s1, s2_all = s2, s3_all = s3, s4_all = s4, s5_all = s5,
+        a12_all = a12, a53_all = a53, a43_all = a43,
+        b15_all = b15, b25_all = b25,
+        seed_num = kk
+      )
+    )
     colnames(dat) <- as.character(1:5)
-    
+
     # candidate approach (known RCPs)
     pvals <- matrix(NA, nrow = length(cand_set), ncol = length(PS))
     rownames(pvals) <- as.character(cand_set)
-    colnames(pvals) <- sapply(PS, \(l) {paste(l, collapse = "_")})
+    colnames(pvals) <- sapply(PS, \(l) {
+      paste(l, collapse = "_")
+    })
     cur_time <- proc.time()[[1]]
     for (ii in seq_along(cand_set)) {
       for (jj in seq_along(PS)) {
         S <- PS[[jj]]
-        pvals[ii, jj] <- test_chow1(dat[,1:4], dat[,5], segs[[ii]], segs[[ii+1]], S)$p_value
+        pvals[ii, jj] <- test_chow1(dat[, 1:4], dat[, 5], segs[[ii]], segs[[ii + 1]], S)$p_value
         # pvals[ii, jj] <- test_chow2(dat[,1:4], dat[,5], segs[[ii]], segs[[ii+1]], S)$p_value
       }
     }
     candi1_time[ll] <- proc.time()[[1]] - cur_time
-    max_pvals <- data.frame(cp = rownames(pvals),
-                            max_pval = apply(pvals, 1, max),
-                            max_pval_set = sapply(PS[apply(pvals, 1, which.max)], \(l) {paste(l, collapse = "_")}))
+    max_pvals <- data.frame(
+      cp = rownames(pvals),
+      max_pval = apply(pvals, 1, max),
+      max_pval_set = sapply(PS[apply(pvals, 1, which.max)], \(l) {
+        paste(l, collapse = "_")
+      })
+    )
     max_pvals <- max_pvals %>%
-      dplyr::mutate(is_ccp = cp %in% true_ccp,
-                    cp_scale = ccp_scales[ll],
-                    n = n,
-                    rep = kk)
+      dplyr::mutate(
+        is_ccp = cp %in% true_ccp,
+        cp_scale = ccp_scales[ll],
+        n = n,
+        rep = kk
+      )
     rownames(max_pvals) <- NULL
     max_pvals_lst[[ll]] <- max_pvals
-    
+
     # candidate approach (estimated number of RCPs)
     cur_time <- proc.time()[[1]]
-    cand_set2 <- strucchange::breakpoints(dat[,5] ~ dat[,1:4], h = 100, breaks = 5)$breakpoints
+    cand_set2 <- strucchange::breakpoints(dat[, 5] ~ dat[, 1:4], h = 100, breaks = 5)$breakpoints
     if (!anyNA(cand_set2)) {
       segs2 <- get_segs(cand_set2, n)
       pvals2 <- matrix(NA, nrow = length(cand_set2), ncol = length(PS))
       rownames(pvals2) <- as.character(cand_set2)
-      colnames(pvals2) <- sapply(PS, \(l) {paste(l, collapse = "_")})
+      colnames(pvals2) <- sapply(PS, \(l) {
+        paste(l, collapse = "_")
+      })
       for (ii in seq_along(cand_set2)) {
         for (jj in seq_along(PS)) {
           S <- PS[[jj]]
-          pvals2[ii, jj] <- test_chow1(dat[,1:4], dat[,5], segs2[[ii]], segs2[[ii+1]], S)$p_value
+          pvals2[ii, jj] <- test_chow1(dat[, 1:4], dat[, 5], segs2[[ii]], segs2[[ii + 1]], S)$p_value
           # pvals2[ii, jj] <- test_chow2(dat[,1:4], dat[,5], segs2[[ii]], segs2[[ii+1]], S)$p_value
         }
       }
       candi2_time[ll] <- proc.time()[[1]] - cur_time
-      max_pvals2 <- data.frame(cp = rownames(pvals2),
-                               max_pval = apply(pvals2, 1, max),
-                               max_pval_set = sapply(PS[apply(pvals2, 1, which.max)], \(l) {paste(l, collapse = "_")}))
+      max_pvals2 <- data.frame(
+        cp = rownames(pvals2),
+        max_pval = apply(pvals2, 1, max),
+        max_pval_set = sapply(PS[apply(pvals2, 1, which.max)], \(l) {
+          paste(l, collapse = "_")
+        })
+      )
       max_pvals2 <- max_pvals2 %>%
-        dplyr::mutate(is_ccp = cp %in% true_ccp,
-                      cp_scale = ccp_scales[ll],
-                      n = n,
-                      rep = kk)
+        dplyr::mutate(
+          is_ccp = cp %in% true_ccp,
+          cp_scale = ccp_scales[ll],
+          n = n,
+          rep = kk
+        )
       rownames(max_pvals2) <- NULL
     } else {
-      max_pvals2 <- data.frame(cp = n + 1,
-                               max_pval = 1,
-                               max_pval_set = "",
-                               is_ccp = FALSE,
-                               cp_scale = ccp_scales[ll],
-                               n = n,
-                               rep = kk)
+      max_pvals2 <- data.frame(
+        cp = n + 1,
+        max_pval = 1,
+        max_pval_set = "",
+        is_ccp = FALSE,
+        cp_scale = ccp_scales[ll],
+        n = n,
+        rep = kk
+      )
       candi2_time[ll] <- proc.time()[[1]] - cur_time
     }
     max_pvals_lst2[[ll]] <- max_pvals2
-    
+
     # niklas1 score
     cur_time <- proc.time()[[1]]
-    score_lst[[ll]] <- sapply(grid_pts, \(t) cc_loss(dat[,1:4], dat[,5], t, 1, n,
-                                                     min_seg = min_seg,
-                                                     cond_sets = PS,
-                                                     intercept = TRUE,
-                                                     verbose = FALSE))
+    score_lst[[ll]] <- sapply(grid_pts, \(t) cc_loss(dat[, 1:4], dat[, 5], t, 1, n,
+      min_seg = min_seg,
+      cond_sets = PS,
+      intercept = TRUE,
+      verbose = FALSE
+    ))
     ccloss_time[ll] <- proc.time()[[1]] - cur_time
-    
-    
+
+
     # structural change
     cur_time <- proc.time()[[1]]
-    struc_est[ll] <- strucchange::breakpoints(dat[,5] ~ dat[,1:4], h = min_seg, breaks = 1)$breakpoints
+    struc_est[ll] <- strucchange::breakpoints(dat[, 5] ~ dat[, 1:4], h = min_seg, breaks = 1)$breakpoints
     bp_time[ll] <- proc.time()[[1]] - cur_time
   }
-  
+
   res_lst <- list(
-    max_pvals_all =  do.call(rbind, max_pvals_lst),
+    max_pvals_all = do.call(rbind, max_pvals_lst),
     max_pvals_all2 = do.call(rbind, max_pvals_lst2),
     score_all = do.call(rbind, score_lst),
     struc_all = struc_est,
@@ -187,17 +188,20 @@ future_lapply(reps, \(kk) {
     ccloss_time = ccloss_time,
     bp_time = bp_time
   )
-  
+
   saveRDS(res_lst,
-          file = paste0(pkg_dir, "/inst/output/ccpl_exp1",
-                        "_allmethods",
-                        "_relminseg", rel_min_seg,
-                        "_nseg", n_seg,
-                        "_fixedsign", fixed_sign,
-                        "_relmindis", rel_min_dis,
-                        "_nccpscale", nccp_scale,
-                        "_n", n,
-                        "_seed", seed_num,
-                        "_rep", kk,
-                        ".rds"))
+    file = paste0(
+      pkg_dir, "/inst/output/ccpl_exp1",
+      "_allmethods",
+      "_relminseg", rel_min_seg,
+      "_nseg", n_seg,
+      "_fixedsign", fixed_sign,
+      "_relmindis", rel_min_dis,
+      "_nccpscale", nccp_scale,
+      "_n", n,
+      "_seed", seed_num,
+      "_rep", kk,
+      ".rds"
+    )
+  )
 }, future.seed = TRUE)
