@@ -4,4 +4,7 @@ causalCP.Rproj
 .Rproj.user
 .DS_Store
 inst/output/*.rds
+inst/output/*.csv
 inst/output/plots/*.pdf
+.vscode
+inst/data/coef_ci.csv

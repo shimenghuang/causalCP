@@ -8,7 +8,7 @@
 #'   the `prune_candi` function to remove the NCCPs.
 #'
 #' @return A vector of estimated causal change points.
-#' 
+#'
 #' @export
 stdBS_ccp <- function(X, Y, st, en, min_gap = 100,
                       test_fun = NULL,
@@ -17,15 +17,23 @@ stdBS_ccp <- function(X, Y, st, en, min_gap = 100,
                       esti_param = list(intercept = TRUE),
                       verbose = TRUE) {
   message("st: ", st, ", en: ", en)
-  if (en - st < min_gap) return(numeric())
+  if (en - st < min_gap) {
+    return(numeric())
+  }
   pval <- do.call(test_fun, c(list(X = X, Y = Y, I = st:en), test_param))
-  if (pval > test_param$alpha) return(numeric())
+  if (pval > test_param$alpha) {
+    return(numeric())
+  }
   one_est <- do.call(esti_fun, c(list(X = X, Y = Y, I = st:en), esti_param))
   message("one_est: ", one_est)
-  est_left <- stdBS_ccp(X, Y, st, one_est-1, min_gap, test_fun,
-                        test_param, esti_fun, esti_param, verbose)
-  est_right <- stdBS_ccp(X, Y, one_est, en, min_gap, test_fun,
-                         test_param, esti_fun, esti_param, verbose)
+  est_left <- stdBS_ccp(
+    X, Y, st, one_est - 1, min_gap, test_fun,
+    test_param, esti_fun, esti_param, verbose
+  )
+  est_right <- stdBS_ccp(
+    X, Y, one_est, en, min_gap, test_fun,
+    test_param, esti_fun, esti_param, verbose
+  )
   return(c(est_left, one_est, est_right))
 }
 
@@ -48,22 +56,24 @@ stdBS_ccp <- function(X, Y, st, en, min_gap = 100,
 #'   Seeded binary segmentation: a general methodology for fast and optimal
 #'   changepoint detection, Biometrika, Volume 110, Issue 1, Pages 249–256,
 #'   https://doi.org/10.1093/biomet/asac052
-#'   
+#'
 #' @export
 seeded_intervals <- function(n, decay = sqrt(2), min_len = NULL, return_unique = TRUE) {
-  n	<- as.integer(n)
-  depth	<- ceiling(log(n, base = decay)) # k
+  n <- as.integer(n)
+  depth <- ceiling(log(n, base = decay)) # k
   boundary_df <- data.frame(st = 1, en = n, depth = 1)
-  for (ii in 2:depth){
-    len_interval <- n * (1/decay)^(ii-1) # l_k
+  for (ii in 2:depth) {
+    len_interval <- n * (1 / decay)^(ii - 1) # l_k
     if (!is.null(len_interval) & len_interval < min_len) {
       break
     }
-    num_interval <- 2 * ceiling(decay^(ii-1)) - 1 # n_k
-    new_intervals <- data.frame(st = floor(seq(1, n-len_interval+1, length.out = num_interval)),
-                                en = ceiling(seq(len_interval, n, length.out = num_interval)))
+    num_interval <- 2 * ceiling(decay^(ii - 1)) - 1 # n_k
+    new_intervals <- data.frame(
+      st = floor(seq(1, n - len_interval + 1, length.out = num_interval)),
+      en = ceiling(seq(len_interval, n, length.out = num_interval))
+    )
     new_intervals$depth <- ii
-    boundary_df	<- rbind(boundary_df, new_intervals)
+    boundary_df <- rbind(boundary_df, new_intervals)
   }
   if (return_unique) {
     return(unique(boundary_df))
@@ -81,17 +91,22 @@ seeded_intervals <- function(n, decay = sqrt(2), min_len = NULL, return_unique =
 #'
 #' @return A data.frame with possibly reduced number of rows.
 eliminate_intervals <- function(boundary_df, est_ccp) {
-  if (nrow(boundary_df) == 0 | length(est_ccp) == 0) return(boundary_df)
+  message("est_ccp", paste(est_ccp, collapse = " "))
+  if (nrow(boundary_df) == 0 || length(est_ccp) == 0) {
+    return(boundary_df)
+  }
   remove_flag <- sapply(est_ccp, \(ii) {
-    sapply(1:nrow(boundary_df), \(rr) {
-      (ii > boundary_df[rr,]$st) & (ii <=  boundary_df[rr,]$en)
+    sapply(seq_len(nrow(boundary_df)), \(rr) {
+      (ii > boundary_df[rr, ]$st) & (ii <= boundary_df[rr, ]$en)
     })
   })
   # Note: in case of bounadry_df having only one row, the returned remove_flag
   #   will be a vector of length of est_ccp, thus need to enforce the matrix
   remove_flag <- matrix(remove_flag, ncol = length(est_ccp))
+  message("nrow ", nrow(remove_flag), " ncol ", ncol(remove_flag))
+  # print(remove_flag)
   remove_flag <- rowSums(remove_flag) > 0
-  boundary_df[!remove_flag,]
+  boundary_df[!remove_flag, ]
 }
 
 #' Seeded binary segmentation for causal change points.
@@ -112,22 +127,33 @@ eliminate_intervals <- function(boundary_df, est_ccp) {
 #' @param est_param A list containing additional parameters used by `loss_fun`.
 #'
 #' @return A vector of estimated change points.
-#' 
+#'
 #' @export
-seedBS_ccp <- function(X, Y, boundary_df, est_ccp = integer(),
+seedBS_ccp <- function(X, Y, boundary_df,
+                       est_ccp = integer(),
+                       local_grid = list(),
+                       local_scores = list(),
                        test_fun = NULL,
                        test_param = list(alpha = 0.05),
                        esti_fun = NULL,
                        esti_param = list(intercept = TRUE),
+                       return_score = FALSE,
                        verbose = TRUE) {
   if (verbose) message("nrow(boundary_df) = ", nrow(boundary_df))
   if (nrow(boundary_df) < 1) {
-    return(est_ccp)
-  }
-  else {
+    if (return_score) {
+      return(list(
+        grid = local_grid,
+        scores = local_scores,
+        est = est_ccp
+      ))
+    } else {
+      return(est_ccp)
+    }
+  } else {
     max_depth <- max(unique(boundary_df$depth))
     if (verbose) message("max_depth = ", max_depth)
-    boundary_tmp <- boundary_df[boundary_df$depth == max_depth,]
+    boundary_tmp <- boundary_df[boundary_df$depth == max_depth, ]
     pvals <- rep(NA, nrow(boundary_tmp))
     for (jj in 1:nrow(boundary_tmp)) {
       st <- boundary_tmp$st[jj]
@@ -135,19 +161,32 @@ seedBS_ccp <- function(X, Y, boundary_df, est_ccp = integer(),
       pvals[jj] <- do.call(test_fun, c(list(X = X, Y = Y, I = st:en), test_param))
     }
     ord_pval <- order(pvals) # smallest to largest p-values
-    boundary_tmp <- boundary_tmp[ord_pval,]
-    boundary_tmp <- boundary_tmp[sort(pvals) < test_param$alpha,]
-    while(nrow(boundary_tmp) > 0) {
+    boundary_tmp <- boundary_tmp[ord_pval, ]
+    boundary_tmp <- boundary_tmp[sort(pvals) < test_param$alpha, ]
+    while (nrow(boundary_tmp) > 0) {
       st <- boundary_tmp$st[1]
       en <- boundary_tmp$en[1]
       if (verbose) message("estimating in ", st, " to ", en)
-      one_est <- do.call(esti_fun, c(list(X = X, Y = Y, I = st:en), esti_param))
-      est_ccp <- c(est_ccp, one_est)
+      if (return_score) {
+        est_res <- do.call(esti_fun, c(list(X = X, Y = Y, I = st:en), esti_param))
+        one_est <- est_res$est
+        est_ccp <- c(est_ccp, one_est)
+        local_grid <- c(local_grid, list(est_res$eval_grid))
+        local_scores <- c(local_scores, list(est_res$scores))
+      } else {
+        one_est <- do.call(esti_fun, c(list(X = X, Y = Y, I = st:en), esti_param))
+        est_ccp <- c(est_ccp, one_est)
+      }
       boundary_tmp <- eliminate_intervals(boundary_tmp, one_est)
     }
     boundary_df <- eliminate_intervals(boundary_df, est_ccp)
-    boundary_df <- boundary_df[!boundary_df$depth == max_depth,]
-    seedBS_ccp(X, Y, boundary_df, est_ccp, test_fun, test_param, esti_fun, esti_param)
+    boundary_df <- boundary_df[!boundary_df$depth == max_depth, ]
+    seedBS_ccp(X, Y, boundary_df,
+      est_ccp, local_grid, local_scores,
+      test_fun, test_param,
+      esti_fun, esti_param,
+      return_score = return_score
+    )
   }
 }
 
@@ -156,15 +195,17 @@ seedBS_ccp <- function(X, Y, boundary_df, est_ccp = integer(),
 #' Prune candidates and remove the ones that are not causal change points.
 #'
 #' @return A vector of estimated causal change points
-#' 
+#'
 #' @export
 prune_candi <- function(X, Y, candi, PS, alpha, test_name, ...) {
-  if (length(candi) == 0) return(candi)
+  if (length(candi) == 0) {
+    return(candi)
+  }
   n_tot <- nrow(X)
   segs <- get_segs(candi, n_tot)
   max_pvals <- rep(NA, length(candi))
-  for (ii in 1:(length(segs)-1)) {
-    max_pvals[ii] <- max(two_env_test(X, Y, segs[[ii]], segs[[ii+1]], PS, test_name, ...)$pvals)
+  for (ii in 1:(length(segs) - 1)) {
+    max_pvals[ii] <- max(two_env_test(X, Y, segs[[ii]], segs[[ii + 1]], PS, test_name, ...)$pvals)
   }
   return(candi[max_pvals < alpha])
 }
