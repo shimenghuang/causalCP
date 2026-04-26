@@ -1,20 +1,19 @@
-## Figure 8 ##
+## Figure 8 -- with DPDU (Xu, Wang, Zhao, Yu 2022, arXiv:2207.12453) competitor ##
 
-# ---- setup on computerome ----
-.libPaths(c("~/causalcp_proj/lib", .libPaths()))
-
-# set up dependencies
+# ---- setup ----
 if (!require("renv")) {
-  install.packages("renv", "~/causalcp_proj/lib", repos = "http://cran.us.r-project.org")
+  install.packages("renv", repos = "http://cran.us.r-project.org")
 }
 renv::restore()
 if (!require("dHSIC")) {
-  install.packages("dHSIC", "~/causalcp_proj/lib", repos = "http://cran.us.r-project.org")
+  install.packages("dHSIC", repos = "http://cran.us.r-project.org")
+}
+if (!require("changepoints")) {
+  install.packages("changepoints", repos = "http://cran.us.r-project.org")
 }
 
 # ---- libraries ----
 pkg_dir <- getwd()
-pkg_dir <- "~/causalcp_proj/causalCPD/causalCPD/"
 devtools::install_local(pkg_dir) # Note: only need to install once
 devtools::load_all(pkg_dir)
 
@@ -44,6 +43,22 @@ esti_fun <- function(X, Y, I,
   return(min(I) + eval_grid[which.min(vals)])
 }
 
+# DPDU pipeline: CV.search -> DPDU2 -> local.refine (Xu et al. 2022)
+dpdu_fit <- function(X, Y,
+                     lambda_set = c(0.3, 0.5, 1, 2),
+                     zeta_set = c(10, 15, 20),
+                     w = 0.9) {
+  temp <- changepoints::CV.search.DPDU.regression(
+    y = Y, X = X, lambda_set = lambda_set, zeta_set = zeta_set
+  )
+  min_idx <- as.vector(arrayInd(which.min(temp$test_error), dim(temp$test_error)))
+  cpt_init <- unlist(temp$cpt_hat[min_idx[1], min_idx[2]])
+  if (length(cpt_init) == 0) return(integer(0))
+  beta_hat <- matrix(unlist(temp$beta_hat[min_idx[1], min_idx[2]]),
+                     ncol = length(cpt_init) + 1)
+  changepoints::local.refine.DPDU.regression(cpt_init, beta_hat, Y, X, w = w)
+}
+
 # ---- main script ----
 arg <- commandArgs(trailingOnly = TRUE) # not used here
 seed_num <- 1000
@@ -65,6 +80,7 @@ future_lapply(reps, \(kk) {
   bp1_all <- vector("list", length(ns))
   bp2_all <- vector("list", length(ns))
   bp3_all <- vector("list", length(ns))
+  dpdu_all <- vector("list", length(ns))
   seedbs_time <- vector("numeric", length(ns))
   seedbs_prune_time <- vector("numeric", length(ns))
   stdbs_time <- vector("numeric", length(ns))
@@ -72,13 +88,14 @@ future_lapply(reps, \(kk) {
   bp1_time <- vector("numeric", length(ns))
   bp2_time <- vector("numeric", length(ns))
   bp3_time <- vector("numeric", length(ns))
+  dpdu_time <- vector("numeric", length(ns))
   for (ll in seq_along(ns)) {
     n <- ns[ll]
     min_dis <- rel_min_dis * n
     true_ccp <- n * rel_true_ccp + 1
     true_nccp <- n * rel_true_nccp + 1
     true_rcp <- sort(c(true_ccp, true_nccp))
-    
+
     params_init <- init_mb_params()
     params_step <- params_init[rep(1, 1 + length(true_ccp) + length(true_nccp)),]
     rownames(params_step) <- NULL
@@ -96,41 +113,7 @@ future_lapply(reps, \(kk) {
     params_step[4, 'b15'] <- 0
     params_step[4, 'b25'] <- 1
     params_step[4, 's5'] <- 2
-    
-    # # verify that the CCP are indeed CCPs (calculate the population OLS coef for all S in PS)
-    # ps_tmp <- lapply(PS, \(S) {
-    #   if (length(S) != 0) {
-    #     paste0("X", S)
-    #   }
-    #   else {
-    #     S
-    #   }
-    # })
-    # beta_diff <- rep(NA, length(ps_tmp))
-    # for (ss in seq_along(ps_tmp)) {
-    #   S <- ps_tmp[[ss]]
-    #   message("**", S, "**")
-    #   beta1 <- with(params_step['1',], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                 s1, s2, s3, s4, s5, S))
-    #   message(beta1)
-    #   beta2 <- with(params_step['2',], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                 s1, s2, s3, s4, s5, S))
-    #   message(beta2)
-    #   beta_diff[ss] <- any(beta1 != beta2)
-    # }
-    # beta_diff <- rep(NA, length(ps_tmp))
-    # for (ss in seq_along(ps_tmp)) {
-    #   S <- ps_tmp[[ss]]
-    #   message("**", S, "**")
-    #   beta1 <- with(params_step['3',], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                 s1, s2, s3, s4, s5, S))
-    #   message(beta1)
-    #   beta2 <- with(params_step['4',], comp_pop_ols(a12, b15, b25, a53, a43, m1, m2, m3, m4, m5,
-    #                                                 s1, s2, s3, s4, s5, S))
-    #   message(beta2)
-    #   beta_diff[ss] <- any(beta1 != beta2)
-    # }
-    
+
     params_df <- get_full_mb_params(n, params_step)
     dat <- with(params_df,
                 sim_data_mix(m1_all = m1, m2_all = m2, m3_all = m3, m4_all = m4, m5_all = m5,
@@ -141,7 +124,7 @@ future_lapply(reps, \(kk) {
     colnames(dat) <- as.character(1:5)
     X <- dat[,1:4]
     Y <- dat[,5]
-    
+
     # seededBS
     cur_time <- proc.time()[[1]]
     boundary_df <- seeded_intervals(n, min_len = min_dis)
@@ -151,12 +134,12 @@ future_lapply(reps, \(kk) {
                            verbose = TRUE)
     seedbs_all[[ll]] <- sort(seed_est)
     seedbs_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # seededBS with pruning
     seedbs_prune_all[[ll]] <- prune_candi(X, Y, sort(seed_est), PS, alpha = 0.05/length(seed_est),
                                           test_name = "chow1", intercept = TRUE)
     seedbs_prune_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # stdBS
     cur_time <- proc.time()[[1]]
     std_est <- stdBS_ccp(X, Y, 1, n, min_gap = min_dis,
@@ -167,27 +150,32 @@ future_lapply(reps, \(kk) {
                          verbose = TRUE)
     stdbs_all[[ll]] <- std_est
     stdbs_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # stdBS with pruning
     stdbs_prune_all[[ll]] <- prune_candi(X, Y, std_est, PS, alpha = 0.05/length(std_est),
                                          test_name = "chow1", intercept = TRUE)
     stdbs_prune_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # known number of CCPs
     cur_time <- proc.time()[[1]]
     bp1_all[[ll]] <- strucchange::breakpoints(Y ~ X, breaks = 2, h = rel_min_dis)$breakpoints + 1
     bp1_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # unknown number of CPs
     cur_time <- proc.time()[[1]]
     bp2_all[[ll]] <- strucchange::breakpoints(Y ~ X, h = rel_min_dis)$breakpoints + 1
     bp2_time[ll] <- proc.time()[[1]] - cur_time
-    
+
     # unknown number of CCPs with prune
     bp3_all[[ll]] <- prune_candi(X, Y, bp2_all[[ll]], PS, alpha = 0.05/length(bp2_all[[ll]]) ,
                                  test_name = "chow1", intercept = TRUE)
     bp3_time[ll] <- proc.time()[[1]] - cur_time
-    
+
+    # DPDU regression (Xu, Wang, Zhao, Yu 2022, arXiv:2207.12453)
+    cur_time <- proc.time()[[1]]
+    dpdu_all[[ll]] <- dpdu_fit(X, Y) + 1
+    dpdu_time[ll] <- proc.time()[[1]] - cur_time
+
   }
   res_lst <- list(
     seedbs_all = seedbs_all,
@@ -197,21 +185,23 @@ future_lapply(reps, \(kk) {
     bp1_all = bp1_all,
     bp2_all = bp2_all,
     bp3_all = bp3_all,
+    dpdu_all = dpdu_all,
     seedbs_time = seedbs_time,
     seedbs_prune_time = seedbs_prune_time,
     stdbs_time = stdbs_time,
     stdbs_prune_time = stdbs_prune_time,
     bp1_time = bp1_time,
     bp2_time = bp2_time,
-    bp3_time = bp3_time
+    bp3_time = bp3_time,
+    dpdu_time = dpdu_time
   )
   saveRDS(res_lst,
-          file = paste0(pkg_dir, "/inst/output/ccpl_exp3",
+          file = paste0(pkg_dir, "/inst/output/ccpl_exp3-1",
                         "_allmethods",
                         "_2ccp_1nccp",
                         "_manualparams",
                         "_seed", seed_num,
                         "_rep", kk,
                         ".rds"))
-  
+
 }, future.seed = NULL, future.packages = c("dplyr"))

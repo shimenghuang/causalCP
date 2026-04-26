@@ -1,25 +1,42 @@
-## Figure 6 ##
+## Figure 6 -- with DPDU (Xu, Wang, Zhao, Yu 2022, arXiv:2207.12453) competitor ##
 
-# ---- setup on computerome ----
-.libPaths(c("~/causalcp_proj/lib", .libPaths()))
-
-# set up dependencies
+# ---- setup ----
 if (!require("renv")) {
-  install.packages("renv", "~/causalcp_proj/lib", repos = "http://cran.us.r-project.org")
+  install.packages("renv", repos = "http://cran.us.r-project.org")
 }
 renv::restore()
 if (!require("dHSIC")) {
-  install.packages("dHSIC", "~/causalcp_proj/lib", repos = "http://cran.us.r-project.org")
+  install.packages("dHSIC", repos = "http://cran.us.r-project.org")
+}
+if (!require("changepoints")) {
+  install.packages("changepoints", repos = "http://cran.us.r-project.org")
 }
 
 # ---- libraries ----
-pkg_dir <- "~/causalcp_proj/causalCPD/causalCPD"
+pkg_dir <- getwd()
 devtools::install_local(pkg_dir) # Note: only need to install once
 devtools::load_all(pkg_dir)
 
 # set up parallel
 library(future.apply)
 plan(multisession)
+
+# ---- helper functions ----
+# DPDU pipeline: CV.search -> DPDU2 -> local.refine (Xu et al. 2022)
+dpdu_fit <- function(X, Y,
+                     lambda_set = c(0.3, 0.5, 1, 2),
+                     zeta_set = c(10, 15, 20),
+                     w = 0.9) {
+  temp <- changepoints::CV.search.DPDU.regression(
+    y = Y, X = X, lambda_set = lambda_set, zeta_set = zeta_set
+  )
+  min_idx <- as.vector(arrayInd(which.min(temp$test_error), dim(temp$test_error)))
+  cpt_init <- unlist(temp$cpt_hat[min_idx[1], min_idx[2]])
+  if (length(cpt_init) == 0) return(integer(0))
+  beta_hat <- matrix(unlist(temp$beta_hat[min_idx[1], min_idx[2]]),
+                     ncol = length(cpt_init) + 1)
+  changepoints::local.refine.DPDU.regression(cpt_init, beta_hat, Y, X, w = w)
+}
 
 # ---- main script ----
 arg <- commandArgs(trailingOnly = TRUE)
@@ -54,10 +71,12 @@ future_lapply(reps, \(kk) {
   max_pvals_lst2 <- vector("list", length(ccp_scales))
   score_lst <- vector("list", length(ccp_scales))
   struc_est <- rep(NA, length(ccp_scales))
+  dpdu_lst <- vector("list", length(ccp_scales))
   candi1_time <- vector("numeric", length(ccp_scales))
   candi2_time <- vector("numeric", length(ccp_scales))
   ccloss_time <- vector("numeric", length(ccp_scales))
   bp_time <- vector("numeric", length(ccp_scales))
+  dpdu_time <- vector("numeric", length(ccp_scales))
 
   for (ll in seq_along(ccp_scales)) {
     params_lst <- rand_mb_params_step(n, true_ccp, true_nccp, seed_num,
@@ -176,6 +195,11 @@ future_lapply(reps, \(kk) {
     cur_time <- proc.time()[[1]]
     struc_est[ll] <- strucchange::breakpoints(dat[, 5] ~ dat[, 1:4], h = min_seg, breaks = 1)$breakpoints
     bp_time[ll] <- proc.time()[[1]] - cur_time
+
+    # DPDU regression (Xu, Wang, Zhao, Yu 2022, arXiv:2207.12453)
+    cur_time <- proc.time()[[1]]
+    dpdu_lst[[ll]] <- dpdu_fit(dat[, 1:4], dat[, 5]) + 1
+    dpdu_time[ll] <- proc.time()[[1]] - cur_time
   }
 
   res_lst <- list(
@@ -183,15 +207,17 @@ future_lapply(reps, \(kk) {
     max_pvals_all2 = do.call(rbind, max_pvals_lst2),
     score_all = do.call(rbind, score_lst),
     struc_all = struc_est,
+    dpdu_all = dpdu_lst,
     candi1_time = candi1_time,
     candi2_time = candi2_time,
     ccloss_time = ccloss_time,
-    bp_time = bp_time
+    bp_time = bp_time,
+    dpdu_time = dpdu_time
   )
 
   saveRDS(res_lst,
     file = paste0(
-      pkg_dir, "/inst/output/ccpl_exp1",
+      pkg_dir, "/inst/output/ccpl_exp1-1",
       "_allmethods",
       "_relminseg", rel_min_seg,
       "_nseg", n_seg,
@@ -204,4 +230,4 @@ future_lapply(reps, \(kk) {
       ".rds"
     )
   )
-}, future.seed = TRUE)
+}, future.seed = TRUE, future.packages = c("dplyr"))

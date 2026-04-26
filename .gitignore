@@ -7,4 +7,5 @@ inst/output/*.rds
 inst/output/*.csv
 inst/output/plots/*.pdf
 .vscode
-inst/data/coef_ci.csv
+inst/script/logs/*
+inst/script/*.sh
